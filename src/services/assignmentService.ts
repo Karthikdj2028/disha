@@ -98,9 +98,9 @@ export async function releaseTeam(incidentId: string, finalStatus: IncidentStatu
 }
 
 export function subscribeToAssignments(onData: (items: Assignment[]) => void, onError: (message: string) => void): Unsubscribe {
-  return onSnapshot(query(assignments, orderBy("assignedAt", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as Assignment[]), (error) => onError(error.message));
+  return onSnapshot(query(assignments, orderBy("assignedAt", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as Assignment[]), (error) => onError(`assignments read failed: ${error.message}`));
 }
 
 export function subscribeToAssignmentHistory(onData: (items: AssignmentEvent[]) => void, onError: (message: string) => void): Unsubscribe {
-  return onSnapshot(query(assignmentEvents, orderBy("timestamp", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as AssignmentEvent[]), (error) => onError(error.message));
+  return onSnapshot(query(assignmentEvents, orderBy("timestamp", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as AssignmentEvent[]), (error) => onError(`assignmentEvents read failed: ${error.message}`));
 }

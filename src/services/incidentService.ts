@@ -1,6 +1,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, GeoPoint, onSnapshot, orderBy, query, serverTimestamp, updateDoc, type Unsubscribe } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { classifySeverity } from "../lib/severityEngine";
+import { incidentDeletionBlockReason } from "../lib/securityPolicy";
 import type { Incident, IncidentStatus, NewIncidentInput } from "../types/incident";
 
 const incidentsCollection = collection(db, "incidents");
@@ -11,8 +12,15 @@ export async function createIncident(input: NewIncidentInput): Promise<string> {
   return (await addDoc(incidentsCollection, record)).id;
 }
 export function subscribeToIncidents(onData: (incidents: Incident[]) => void, onError: (message: string) => void): Unsubscribe {
-  return onSnapshot(query(incidentsCollection, orderBy("createdAt", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as Incident[]), (error) => onError(error.message));
+  return onSnapshot(query(incidentsCollection, orderBy("createdAt", "desc")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as Incident[]), (error) => onError(`incidents read failed: ${error.message}`));
 }
 export async function getIncidentById(id: string): Promise<Incident | null> { const snapshot = await getDoc(doc(db, "incidents", id)); return snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as Incident) : null; }
 export function updateIncidentStatus(id: string, status: IncidentStatus): Promise<void> { return updateDoc(doc(db, "incidents", id), { status, updatedAt: serverTimestamp() }); }
-export function deleteIncident(id: string): Promise<void> { return deleteDoc(doc(db, "incidents", id)); }
+export async function deleteIncident(id: string): Promise<void> {
+  const snapshot = await getDoc(doc(db, "incidents", id));
+  if (!snapshot.exists()) return;
+  const incident = { id: snapshot.id, ...snapshot.data() } as import("../types/incident").Incident;
+  const blockReason = incidentDeletionBlockReason(incident);
+  if (blockReason) throw new Error(blockReason);
+  await deleteDoc(doc(db, "incidents", id));
+}

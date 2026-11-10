@@ -17,10 +17,12 @@ export async function getResponseTeams(): Promise<ResponseTeam[]> {
 }
 
 export function subscribeToResponseTeams(onData: (teams: ResponseTeam[]) => void, onError: (message: string) => void): Unsubscribe {
-  return onSnapshot(query(teams, orderBy("teamName")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ResponseTeam[]), (error) => onError(error.message));
+  return onSnapshot(query(teams, orderBy("teamName")), (snapshot) => onData(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ResponseTeam[]), (error) => onError(`responseTeams read failed: ${error.message}`));
 }
 
 export function updateResponseTeam(id: string, changes: Partial<NewResponseTeam>): Promise<void> {
+  if (changes.assignedIncidentId !== undefined) return Promise.reject(new Error("Team assignments must use the transactional assignment workflow."));
+  if (changes.availabilityStatus === "Busy") return Promise.reject(new Error("Teams become Busy only through a confirmed assignment."));
   return updateDoc(doc(db, "responseTeams", id), { ...changes, ...(changes.currentLocation ? { lastLocationUpdate: serverTimestamp() } : {}), updatedAt: serverTimestamp() });
 }
 

@@ -39,3 +39,9 @@ Assignment transactions and history, team matching/distance calculations, maps/r
 ## Remaining verification
 
 A production Firebase workflow still requires the local `firestore.rules` file to be published in the Firebase Console or with the Firebase CLI. Real admin login, team creation, and report submission require the existing Firebase project to have Authentication, Firestore, and the authorized `admins/{uid}` document configured. Pure automated tests pass; live Firebase concurrency, assignment, and browser acceptance tests were not run in this environment.
+
+## Browser Console Investigation
+
+The repository source, `index.html`, Vite configuration, package scripts/dependencies, React entry point, application routes, and public assets contain no references to `page-guard.js`, `originalValueGetters`, `extension.flash.co`, or `pdp-detector`. These errors are injected by browser extensions rather than DIASA. No CORS proxy or console suppression was added.
+
+The React DevTools message is informational development tooling output. The only application-side lint message is the existing React Hook Form/React Compiler compatibility warning for `useForm().watch()`; it is not a runtime failure.

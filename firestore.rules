@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+    }
+
+    match /admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    match /incidents/{incidentId} {
+      allow create: if request.resource.data.keys().hasOnly(['title', 'description', 'category', 'location', 'peopleAffected', 'contactInfo', 'coordinates', 'severity', 'severityScore', 'severityReason', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.title is string && request.resource.data.title.size() >= 3 && request.resource.data.title.size() <= 120
+        && request.resource.data.description is string && request.resource.data.description.size() >= 10 && request.resource.data.description.size() <= 2000
+        && request.resource.data.category in ['Fire Emergency', 'Road Accident', 'Medical Emergency', 'Flood', 'Building Collapse', 'Other Emergencies']
+        && request.resource.data.location is string && request.resource.data.location.size() >= 2 && request.resource.data.location.size() <= 240
+        && request.resource.data.peopleAffected is int && request.resource.data.peopleAffected >= 0
+        && (!request.resource.data.keys().hasAny(['coordinates']) || request.resource.data.coordinates is geopoint)
+        && request.resource.data.severity in ['Low', 'Medium', 'High', 'Critical']
+        && request.resource.data.severityScore is int && request.resource.data.severityScore >= 0 && request.resource.data.severityScore <= 10
+        && request.resource.data.severityReason is string && request.resource.data.severityReason.size() <= 400
+        && request.resource.data.status == 'Reported'
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'assignedTeamId', 'assignedTeamName', 'assignedAt', 'assignmentStatus', 'activeAssignmentId'])
+        && request.resource.data.status in ['Reported', 'Pending', 'Assigned', 'In Progress', 'Resolved']
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.status != 'Assigned'
+          || (request.resource.data.assignedTeamId is string
+            && getAfter(/databases/$(database)/documents/responseTeams/$(request.resource.data.assignedTeamId)).data.availabilityStatus == 'Busy'
+            && getAfter(/databases/$(database)/documents/responseTeams/$(request.resource.data.assignedTeamId)).data.assignedIncidentId == incidentId))
+        && (resource.data.assignmentStatus != 'Active' || request.resource.data.status != 'Resolved'
+          || (request.resource.data.assignmentStatus == 'Completed'
+            && resource.data.activeAssignmentId is string
+            && getAfter(/databases/$(database)/documents/responseTeams/$(resource.data.assignedTeamId)).data.availabilityStatus == 'Available'
+            && getAfter(/databases/$(database)/documents/assignments/$(resource.data.activeAssignmentId)).data.assignmentStatus == 'Completed'));
+      allow delete: if isAdmin();
+    }
+
+    match /responseTeams/{teamId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['teamCode', 'teamName', 'responseCategories', 'currentLocation', 'availabilityStatus', 'assignedIncidentId', 'memberCount', 'lastLocationUpdate', 'createdAt', 'updatedAt'])
+        && request.resource.data.teamCode is string && request.resource.data.teamCode.size() >= 2 && request.resource.data.teamCode.size() <= 40
+        && request.resource.data.teamName is string && request.resource.data.teamName.size() >= 2 && request.resource.data.teamName.size() <= 120
+        && request.resource.data.responseCategories is list
+        && request.resource.data.availabilityStatus in ['Available', 'Busy', 'Unavailable'];
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamName', 'responseCategories', 'currentLocation', 'availabilityStatus', 'assignedIncidentId', 'memberCount', 'lastLocationUpdate', 'updatedAt']);
+      allow delete: if isAdmin() && resource.data.assignedIncidentId == null;
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['incidentId', 'teamId', 'teamName', 'assignedByUid', 'assignedAt', 'assignmentStatus', 'distanceMeters', 'roadDistanceMeters', 'estimatedTravelSeconds', 'recommendationScore', 'scoreExplanation', 'releasedAt', 'reassignmentReason'])
+        && request.resource.data.assignmentStatus == 'Active'
+        && request.resource.data.distanceMeters is number
+        && request.resource.data.recommendationScore is number;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignmentStatus', 'releasedAt'])
+        && request.resource.data.assignmentStatus in ['Active', 'Released', 'Completed'];
+      allow delete: if false;
+    }
+
+    match /assignmentEvents/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['incidentId', 'teamId', 'eventType', 'actorUid', 'timestamp', 'description', 'metadata'])
+        && request.resource.data.eventType in ['TeamAssigned', 'TeamReassigned', 'TeamReleased', 'IncidentResolved'];
+      allow update, delete: if false;
+    }
+  }
+}
